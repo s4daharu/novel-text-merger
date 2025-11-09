@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text File Merger - Split File Processor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 20px;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border-left: 4px solid #1976d2;
+        }
+
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+            border-left: 4px solid #388e3c;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            border-left: 4px solid #c62828;
+        }
+
+        .file-info {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .file-info.show {
+            display: block;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #333;
+            word-break: break-all;
+        }
+
+        .processing-list {
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .processing-item {
+            padding: 5px 0;
+            color: #555;
+        }
+
+        .loading-note {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #856404;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📁 Text File Merger</h1>
+        <p class="subtitle">Merge split text files (_1_ and _2_) in ZIP archives</p>
+
+        <div class="loading-note" id="loadingNote">Loading libraries... Please wait</div>
+
+        <div class="upload-area" id="uploadArea" style="display:none;">
+            <div class="upload-icon">📦</div>
+            <p><strong>Click to upload</strong> or drag and drop</p>
+            <p style="font-size: 14px; color: #666; margin-top: 8px;">ZIP files only</p>
+            <input type="file" id="fileInput" accept=".zip" />
+        </div>
+
+        <div class="file-info" id="fileInfo">
+            <div class="file-name" id="fileName"></div>
+        </div>
+
+        <button class="btn" id="processBtn" disabled style="display:none;">Process & Download</button>
+
+        <div class="status" id="status"></div>
+        <div class="processing-list" id="processingList"></div>
+    </div>
+
+    <!-- Load JSZip from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <!-- Load FileSaver.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <script>
+        // Wait for libraries to load
+        let loadAttempts = 0;
+        const maxAttempts = 50;
+
+        const checkLibraries = setInterval(() => {
+            loadAttempts++;
+
+            if (typeof JSZip !== 'undefined' && typeof saveAs !== 'undefined') {
+                clearInterval(checkLibraries);
+                initializeApp();
+            } else if (loadAttempts >= maxAttempts) {
+                clearInterval(checkLibraries);
+                document.getElementById('loadingNote').innerHTML = 
+                    '❌ Failed to load libraries. Please check your internet connection and refresh the page.';
+                document.getElementById('loadingNote').style.background = '#ffebee';
+                document.getElementById('loadingNote').style.color = '#c62828';
+            }
+        }, 100);
+
+        function initializeApp() {
+            document.getElementById('loadingNote').style.display = 'none';
+            document.getElementById('uploadArea').style.display = 'block';
+            document.getElementById('processBtn').style.display = 'block';
+
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            const processBtn = document.getElementById('processBtn');
+            const status = document.getElementById('status');
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            const processingList = document.getElementById('processingList');
+
+            let selectedFile = null;
+
+            // Click to upload
+            uploadArea.addEventListener('click', () => fileInput.click());
+
+            // Drag and drop handlers
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileSelect(files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFileSelect(e.target.files[0]);
+                }
+            });
+
+            function handleFileSelect(file) {
+                if (!file.name.toLowerCase().endsWith('.zip')) {
+                    showStatus('error', 'Please select a ZIP file');
+                    return;
+                }
+
+                selectedFile = file;
+                fileName.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                fileInfo.classList.add('show');
+                processBtn.disabled = false;
+                hideStatus();
+            }
+
+            processBtn.addEventListener('click', () => processZipFile(selectedFile));
+
+            function extractChapterName(filename) {
+                const withoutLeadingNumbers = filename.replace(/^\d+_/, '');
+                const match = withoutLeadingNumbers.match(/^(.+?)_[12]_\.txt$/);
+                return match ? match[1] : null;
+            }
+
+            async function processZipFile(file) {
+                if (!file) return;
+
+                processBtn.disabled = true;
+                showStatus('info', '⏳ Processing ZIP file...');
+                processingList.innerHTML = '';
+                processingList.style.display = 'none';
+
+                try {
+                    const zip = new JSZip();
+                    const content = await file.arrayBuffer();
+                    const loadedZip = await zip.loadAsync(content);
+
+                    const files = {};
+                    const filesByChapter = {};
+                    const processedFiles = new Set();
+
+                    for (const [path, zipFile] of Object.entries(loadedZip.files)) {
+                        if (!zipFile.dir && path.toLowerCase().endsWith('.txt')) {
+                            const text = await zipFile.async('text');
+                            files[path] = text;
+
+                            const chapterName = extractChapterName(path);
+                            if (chapterName) {
+                                if (!filesByChapter[chapterName]) {
+                                    filesByChapter[chapterName] = {};
+                                }
+
+                                if (path.includes('_1_')) {
+                                    filesByChapter[chapterName].part1 = path;
+                                } else if (path.includes('_2_')) {
+                                    filesByChapter[chapterName].part2 = path;
+                                }
+                            }
+                        }
+                    }
+
+                    const newZip = new JSZip();
+                    const mergeLog = [];
+
+                    for (const [chapterName, parts] of Object.entries(filesByChapter)) {
+                        const { part1, part2 } = parts;
+
+                        if (part1 && part2) {
+                            let part1Text = files[part1];
+                            let part2Text = files[part2];
+
+                            part2Text = part2Text.replace(/^\s*\n/, '');
+                            const mergedText = part1Text + part2Text;
+
+                            const leadingNumber = part1.match(/^(\d+)_/)[1];
+                            const outputFileName = `${leadingNumber}_${chapterName}.txt`;
+
+                            newZip.file(outputFileName, mergedText);
+                            processedFiles.add(part1);
+                            processedFiles.add(part2);
+
+                            mergeLog.push(`✓ Merged: ${part1} + ${part2} → ${outputFileName}`);
+                        } else if (part1 && !part2) {
+                            newZip.file(part1, files[part1]);
+                            processedFiles.add(part1);
+                            mergeLog.push(`⚠ Kept as-is: ${part1} (part 2 not found)`);
+                        } else if (!part1 && part2) {
+                            newZip.file(part2, files[part2]);
+                            processedFiles.add(part2);
+                            mergeLog.push(`⚠ Kept as-is: ${part2} (part 1 not found)`);
+                        }
+                    }
+
+                    for (const [path, text] of Object.entries(files)) {
+                        if (!processedFiles.has(path)) {
+                            newZip.file(path, text);
+                            mergeLog.push(`→ Kept unchanged: ${path}`);
+                        }
+                    }
+
+                    for (const [path, zipFile] of Object.entries(loadedZip.files)) {
+                        if (!zipFile.dir && !path.toLowerCase().endsWith('.txt')) {
+                            const content = await zipFile.async('arraybuffer');
+                            newZip.file(path, content);
+                        }
+                    }
+
+                    const blob = await newZip.generateAsync({type: 'blob'});
+                    const outputFileName = file.name.replace('.zip', '_merged.zip');
+                    saveAs(blob, outputFileName);
+
+                    showStatus('success', `✅ Success! Downloaded: ${outputFileName}`);
+
+                    if (mergeLog.length > 0) {
+                        processingList.style.display = 'block';
+                        processingList.innerHTML = mergeLog.map(log => 
+                            `<div class="processing-item">${log}</div>`
+                        ).join('');
+                    }
+
+                } catch (error) {
+                    showStatus('error', `❌ Error: ${error.message}`);
+                    console.error(error);
+                } finally {
+                    processBtn.disabled = false;
+                }
+            }
+
+            function showStatus(type, message) {
+                status.className = `status ${type}`;
+                status.textContent = message;
+                status.style.display = 'block';
+            }
+
+            function hideStatus() {
+                status.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
